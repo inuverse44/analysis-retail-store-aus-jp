@@ -1,0 +1,4 @@
+[tools]
+gradle = "9.1.0"
+java = "openjdk-21.0.2"
+kotlin = "2.2.20"
