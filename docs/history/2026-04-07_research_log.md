@@ -107,7 +107,40 @@ Poisson 誤差の下限 $\sigma_\xi \approx (1+\xi)/\sqrt{n_{RR}}$ を `geomRibb
 
 ---
 
-## 5. 未解決問題と次のステップ
+## 5. Step 1 完了：ポリゴン精度の改善（本日実施）
+
+### 5.1 問題
+
+旧ポリゴン（手動37頂点）では 685 点中 ~35 点が誤って海洋判定されていた（陸上率 94.9%）。
+
+### 5.2 対処
+
+Python（shapely + geopandas）を使い、Natural Earth `ne_10m_admin_0_countries` から
+オーストラリアのポリゴンを抽出・簡略化・バッファ処理して新しい CSV を生成した。
+
+```
+簡略化パラメータ:
+  tol = 0.02 度（≈ 2 km）  → Douglas-Peucker 簡略化
+  buffer = 0.02 度（≈ 2 km）→ 沿岸店舗の取りこぼしを防ぐ海側への拡張
+```
+
+| 項目 | 旧 | 新 |
+|---|---|---|
+| データソース | 手動 | Natural Earth ne_10m |
+| 頂点数 | 37 | 1,751（本土）+ 193（Tasmania）= **1,944** |
+| Tasmania 判定 | 矩形補助 | ポリゴンに統合 |
+| 陸上判定率 | 650/685 = 94.9% | **685/685 = 100.0%** |
+
+### 5.3 ノートブックの変更
+
+- `notebook/output/australia_mask_polygon.csv`：3列（lat, lon, polygon_id）に変更
+  - `polygon_id = 0`：本土、`polygon_id = 1`：Tasmania
+- `coles_correlation.ipynb` cell 11：2ポリゴン読み込み対応、デバッグ出力内蔵
+- `coles_correlation.ipynb` cell 14：`geomPath(..., group = "group")` で2本の境界線を描画
+
+---
+
+## 6. 未解決問題と次のステップ
 
 ### 5.1 ポリゴン精度の改善（Priority 1）
 

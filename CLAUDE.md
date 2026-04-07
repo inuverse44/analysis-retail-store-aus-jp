@@ -57,6 +57,8 @@ Notebooks have data dependencies:
 
 - **`lets-plot` color strings:** Only hex codes (`"#4682B4"`) are accepted. CSS named colors (`"steelblue"`, `"gray"`) throw a `RuntimeException` at render time.
 - **`kotlinx-dataframe` CSV read:** `DataFrame.readCSV(path)` resolves paths relative to the notebook file's location.
+- **`lets-plot` `annotateText`:** Not implemented. Use `geomVLine` + subtitle for annotations.
+- **`lets-plot` `theme(legendPosition = ...)`:** Parameter not supported in current version. Legend appears at default position (right).
 
 ## Conventions
 
@@ -70,4 +72,9 @@ Notebooks have data dependencies:
 
 - **Distance metric:** Haversine (great-circle) distance in km for all spatial calculations.
 - **Correlation function bins:** Log-spaced. Set `rMin = meanNN / 2` (half the mean nearest-neighbor distance computed from data) and `nBins = ⌈ln(rMax/rMin) / 0.15⌉` to achieve $\Delta \ln r \approx 0.15$ per bin.
-- **Random catalog:** Currently uniform Poisson sampling within Australia's bounding box (`lat: -44…-10`, `lon: 113…154`) with $N_R = 10 N_D$. Population-density-weighted sampling (ABS SA2 grid) is the planned next step.
+- **Random catalog:** Two variants implemented in `coles_correlation.ipynb`:
+  1. Uniform Poisson within bounding box (`lat: -44…-10`, `lon: 113…154`), $N_R = 10 N_D$ — baseline
+  2. Continental-masked via rejection sampling using `australia_mask_polygon.csv` — preferred
+  Population-density-weighted sampling (ABS SA2 grid) is the planned next step.
+- **Continental mask polygon:** `notebook/output/australia_mask_polygon.csv` — 3 columns: `lat`, `lon`, `polygon_id` (0=mainland, 1=Tasmania). Generated from Natural Earth `ne_10m_admin_0_countries` with `tol=0.02` simplification + `buffer(0.02 deg ≈ 2 km)`. Achieves 685/685 land classification. Regenerate with `shapely` + `geopandas` if needed.
+- **Coordinate axis order:** Ray-casting `isInsidePolygon()` uses `(lat, lon)`. JTS/GeoTools `Coordinate` uses `(lon, lat) = (x, y)`. Do not confuse when switching between implementations.
