@@ -1,80 +1,107 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Navigation index for Claude Code. Detailed content lives in the linked files — read them on demand.
 
-## Project Overview
+---
 
-This is a **retail physics analysis research project** comparing Australian (Coles, Woolworths) and Japanese (TRIAL) retail markets through the lens of statistical mechanics and fluid dynamics. The project owner holds a PhD in cosmology and frames retail phenomena using physical analogies (gravitational potential, particle density, viscosity, order parameter $k$, etc.).
+## Project
 
-## Tech Stack
+AU (Coles, Woolworths) × JP (TRIAL) retail market comparison via statistical mechanics:
+two-point correlation function ξ(r), Voronoi tessellation, Huff model.
+Owner has a PhD in cosmology — use physical language throughout.
+→ Background: `docs/00_background_and_objective.md`
+→ Current results: `docs/06_au_oligopoly_analysis.md`
 
-- **Language:** Kotlin
-- **Environment:** Kotlin Notebook (`.ipynb` files only — `.kts` files are prohibited)
-- **Libraries:** `kotlinx-dataframe`, `lets-plot`, `lets-plot-gt` (GeoTools)
-- **Tool versions:** managed via `mise.toml` (Java OpenJDK 21, Kotlin 2.2, Gradle 9.1)
-- **Data sources:**
-  - AU: OpenStreetMap via Overpass API
-  - JP: TRIAL internal data
+---
 
-## Running Notebooks
+## Directory Map
 
-```bash
-# Install tool versions
-mise install
-
-# Notebooks are run interactively in a Kotlin Notebook environment
-# Open .ipynb files in a Kotlin-capable Jupyter environment
+```
+lib/                        Shared Kotlin utilities (.kt source, Gradle :lib module)
+notebook/au/                AU analysis notebooks (numbered by execution order)
+  output/data/              Raw CSVs: coles_locations, woolworths_locations, random_masked, australia_mask_polygon
+  output/xi/                Correlation functions: xi_cc, xi_ww, xi_cw_wide, xi_cw_small
+  output/errors/            jackknife.csv, bootstrap.csv
+  output/analysis/          bias_model.csv, city_breakdown.csv
+  memo/                     Scratch notebooks (free naming)
+notebook/jp/                JP analysis notebooks (future)
+docs/                       Theory and session logs
+  history/                  YYYY-MM-DD_research_log.md — one file per session
+refs/                       Academic papers (PDF)
 ```
 
-## Repository Structure
+> **Migration in progress**: existing notebooks are in `notebook/` (flat). New notebooks go in `notebook/au/`.
+> Existing output CSVs are in `notebook/output/` until migration completes.
 
-- **`docs/`** — Theory, hypotheses, and analysis status (numbered by category):
-  - `00-09`: Background, objectives, theoretical framework
-  - `10-19`: Data observation and cleaning status
-  - `20-29`: Analysis methods and scaling laws
-  - `30-39`: Validation results and comparison reports
-- **`notebook/`** — Experimental computation and visualization (`.ipynb`)
-  - `memo/` — scratch notebooks
-  - `output/` — generated plots and CSVs
-- **`refs/`** — Academic reference papers
+---
 
-## Research Methodology
+## notebook/au/ — Execution Order
 
-The core methods used in this project:
-1. **Two-point correlation function $\xi(r)$** — cluster analysis of store locations
-2. **Voronoi Tessellation** — effective phase-space area calculation per store
-3. **Gamma distribution fitting** — quantifying order parameter $k$ for JP vs AU comparison
-4. **Huff Model** — gravitational trade area model, treating stores as mass sources and consumers as test particles
+| Prefix | Responsibility | Key outputs |
+|---|---|---|
+| `00_*` | Data fetch / random catalog | `data/coles_locations.csv`, `data/woolworths_locations.csv`, `data/random_masked.csv` |
+| `01_*` | Autocorrelation (ξ_CC, ξ_WW) | `xi/xi_cc.csv`, `xi/xi_ww.csv` |
+| `02_*` | Cross-correlation (ξ_CW) | `xi/xi_cw_wide.csv`, `xi/xi_cw_small.csv` |
+| `03_*` | Error estimation | `errors/jackknife.csv` |
+| `04_*` | Interpretation | `analysis/bias_model.csv`, `analysis/city_breakdown.csv` |
 
-## Notebook Execution Order
+Each notebook's **first cell** is a markdown contract:
+```
+## NN_name — one-line purpose
+**Input**  : list of CSV paths read
+**Output** : list of CSV paths written
+**Prereqs** : which notebooks must run first
+```
 
-Notebooks have data dependencies:
-1. `coles_location.ipynb` — fetches from Overpass API, writes `notebook/output/coles_locations.csv`
-2. `coles_correlation.ipynb` — reads `coles_locations.csv`, computes $\xi(r)$
-3. `coles_visualization.ipynb` — reads the same CSV for spatial plots
+---
+
+## lib/ — Shared Utilities
+
+Build: `mise exec -- gradle :lib:jar --no-daemon`
+Load in notebooks: `@file:DependsOn("../../lib/build/libs/retail-utils-1.0.jar")`
+
+| File | Exports |
+|---|---|
+| `Spatial.kt` | `Point`, `haversine()`, `pairCounts()` |
+| `Mask.kt` | `loadPolygons()`, `isInsidePolygon()`, `isOnContinent()` |
+| `Catalog.kt` | `generateMaskedCatalog()`, `estimateLandFraction()` |
+| `Stats.kt` | `XiBin`, `logBins()`, `binCenters()`, `landySzalay()`, `jackknifeSigma()` |
+
+---
+
+## Random Catalog Convention
+
+- **One shared catalog** for all chains (CC, WW, CW) — generated by `00_random_catalog.ipynb`
+- Size: `N_R = 10 × max(N_C, N_W)` = 10390
+- Seed: 42 (fixed for reproducibility)
+- File: `output/data/random_masked.csv`
+
+---
+
+## Analysis Parameters
+
+- Distance metric: Haversine [km]
+- Bin design: log-spaced, `rMin = meanNN/2`, `Δln r ≈ 0.15`, `rMax = 2000 km`
+- Continental mask: `australia_mask_polygon.csv` (Natural Earth ne_10m, tol=0.02, buffer=0.02°)
+- Coordinate order: ray-casting uses `(lat, lon)`; JTS/GeoTools uses `(lon, lat)` — do not mix
+
+---
 
 ## Known Library Constraints
 
-- **`lets-plot` color strings:** Only hex codes (`"#4682B4"`) are accepted. CSS named colors (`"steelblue"`, `"gray"`) throw a `RuntimeException` at render time.
-- **`kotlinx-dataframe` CSV read:** `DataFrame.readCSV(path)` resolves paths relative to the notebook file's location.
-- **`lets-plot` `annotateText`:** Not implemented. Use `geomVLine` + subtitle for annotations.
-- **`lets-plot` `theme(legendPosition = ...)`:** Parameter not supported in current version. Legend appears at default position (right).
+- **lets-plot colors**: hex only (`"#4682B4"`). CSS names (`"steelblue"`) throw RuntimeException.
+- **lets-plot annotateText**: not implemented. Use `geomVLine` + subtitle.
+- **lets-plot `theme(legendPosition)`**: unsupported. Legend defaults to right.
+- **kotlinx-dataframe `readCSV`**: path resolves relative to the notebook file.
 
-## Conventions
+---
 
-- Analysis logic lives entirely in `.ipynb` notebooks. Do not extract logic into `.kts` scripts.
-- Successful notebook logic should be promoted to `docs/` as mathematical formulations.
-- Research sessions are logged in `docs/history/YYYY-MM-DD_research_log.md`.
-- Use physical language: prefer "potential well depth" over "customer concentration", "stress release" over "market disruption", etc.
-- Explanations should be at PhD level — full mathematical formalism is welcome.
+## docs/ Index
 
-## Analysis Design Conventions
-
-- **Distance metric:** Haversine (great-circle) distance in km for all spatial calculations.
-- **Correlation function bins:** Log-spaced. Set `rMin = meanNN / 2` (half the mean nearest-neighbor distance computed from data) and `nBins = ⌈ln(rMax/rMin) / 0.15⌉` to achieve $\Delta \ln r \approx 0.15$ per bin.
-- **Random catalog:** Two variants implemented in `coles_correlation.ipynb`:
-  1. Uniform Poisson within bounding box (`lat: -44…-10`, `lon: 113…154`), $N_R = 10 N_D$ — baseline
-  2. Continental-masked via rejection sampling using `australia_mask_polygon.csv` — preferred
-  Population-density-weighted sampling (ABS SA2 grid) is the planned next step.
-- **Continental mask polygon:** `notebook/output/australia_mask_polygon.csv` — 3 columns: `lat`, `lon`, `polygon_id` (0=mainland, 1=Tasmania). Generated from Natural Earth `ne_10m_admin_0_countries` with `tol=0.02` simplification + `buffer(0.02 deg ≈ 2 km)`. Achieves 685/685 land classification. Regenerate with `shapely` + `geopandas` if needed.
-- **Coordinate axis order:** Ray-casting `isInsidePolygon()` uses `(lat, lon)`. JTS/GeoTools `Coordinate` uses `(lon, lat) = (x, y)`. Do not confuse when switching between implementations.
+| File | Content |
+|---|---|
+| `00_background_and_objective.md` | Research goals |
+| `02_theoretical_framework.md` | Physical analogies |
+| `04_spatial_analysis_methods.md` | ξ(r), Landy-Szalay, jackknife formalism |
+| `06_au_oligopoly_analysis.md` | AU results: Retail BAO, Debye length, bias model |
+| `history/` | Session-by-session research logs |

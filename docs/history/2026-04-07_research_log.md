@@ -7,6 +7,13 @@ $\hat{\xi}(r)$ の幾何バイアス検証を行った。
 宇宙論・小売・プログラマの3エージェントによる2ラウンドの討論を実施し、
 結果の物理的解釈と次のアクションを整理した。
 
+その後、Landy-Szalay 推定量の統計的基盤（非ポアソン点過程への適用・積分制約・分散過小評価）を精査し、
+`docs/04_spatial_analysis_methods.md` §1.1 として形式化した。
+
+さらに duopoly 競合解析の第一歩として、以下を実装した：
+- `notebook/woolworths_location.ipynb` 新規作成（Overpass API → CSV）
+- `coles_correlation.ipynb` に交差相関 $\xi_{CW}(r)$ セル（Cell 17–22）を追加
+
 ---
 
 ## 2. 実装：大陸マスク付きランダムカタログ
@@ -140,50 +147,70 @@ Python（shapely + geopandas）を使い、Natural Earth `ne_10m_admin_0_countri
 
 ---
 
-## 6. 未解決問題と次のステップ
+## 6. LS 推定量の統計的基盤の整理
 
-### 5.1 ポリゴン精度の改善（Priority 1）
+### 6.1 非ポアソン点過程への適用
 
-現在の 37 頂点ポリゴンでは ~35 点が誤って海洋判定される。
+店舗は人口密度ポテンシャルに引かれる非ポアソン点過程だが、LS 推定量はランダムカタログが
+選択関数をトレースしていれば成立する。現在の均質ランダムカタログは人口密度勾配と
+クラスタリングを混同しており、ABS SA2 加重ランダムカタログへの移行が根本解決。
 
-**即時実施**：デバッグコードで 35 点の緯度・経度分布を確認し、問題辺を同定する。
+### 6.2 積分制約バイアス
 
-```kotlin
-val offshorePoints = dataPoints.filter { !isOnContinent(it.lat, it.lon) }
-println("海洋判定: ${offshorePoints.size} 点")
-offshorePoints.sortedBy { it.lat }.forEach { println("lat=${it.lat}, lon=${it.lon}") }
-```
+$$\langle \hat{\xi}_{\rm LS}(r) \rangle = \xi(r) - C_{\rm IC}, \quad C_{\rm IC} = \frac{\iint_V \xi(|\mathbf{x}-\mathbf{y}|) W(\mathbf{x}) W(\mathbf{y}) d^3x\,d^3y}{\iint_V W(\mathbf{x}) W(\mathbf{y}) d^3x\,d^3y}$$
 
-**根本解決**：`lets-plot-gt`（GeoTools）+ Natural Earth `ne_10m_land.geojson` に移行：
+大スケールの $\hat{\xi} < 0$（$r > 1000$ km）は真の反相関と IC バイアスの重畳。
+数値積分で $C_{\rm IC}$ を評価して分離する必要がある。
 
-```kotlin
-// Union 計算（一度だけ）
-val auLandUnion: Geometry = auLandGeoms.fold(...) { acc, g -> acc.union(g) }
-
-fun isOnContinentGT(lat: Double, lon: Double): Boolean =
-    auLandUnion.contains(factory.createPoint(Coordinate(lon, lat)))
-```
-
-Tasmania の矩形補助判定も不要になる。
-
-### 5.2 $\phi(r)$ のモンテカルロ計算
-
-$$\phi(r) = \frac{RR_{\rm land}(r)}{RR_{\rm box}(r)}$$
-
-を Monte Carlo で直接計算し、$r \approx 725$ km での幾何補正の大きさを数値的に確認する。$\Delta\xi(725) \approx (1/\phi - 1)(1 + \xi)$ の解析予測 $\Delta\xi \sim 1.3$–$2.2$ を検証。
-
-### 5.3 中期アクション
-
-- [ ] GeoTools 版大陸マスクへの移行（ne_10m_land.geojson）
-- [ ] $\phi(r)$ の Monte Carlo 計算
-- [ ] Woolworths データ取得 → 交差相関 $\xi_{CW}(r)$（duopoly の空間的排斥を直接測定）
-- [ ] ABS SA2 人口密度加重ランダムカタログ（人口追随成分と出店戦略成分の分離）
-- [ ] 異方的相関関数 $\xi(r, \theta)$（バンプの方位角依存性で Sydney–Melbourne ペアを直接同定）
+詳細は `docs/04_spatial_analysis_methods.md` §1.1 を参照。
 
 ---
 
-## 6. 技術メモ
+## 7. 新規実装：Woolworths 取得 + 交差相関 $\xi_{CW}(r)$
+
+### 7.1 woolworths_location.ipynb（新規）
+
+`coles_location.ipynb` に倣い、Overpass API から Woolworths 店舗座標を取得して
+`notebook/output/woolworths_locations.csv` に保存するノートブックを作成した。
+
+- OSM タグ: `shop=supermarket` + `brand=Woolworths`
+- 期待件数: ~1,050–1,100 店舗（実行後に確認）
+- QC セル：州別件数・緯度経度範囲の確認
+
+### 7.2 coles_correlation.ipynb — Cell 17–22（追加）
+
+交差相関推定量：
+
+$$\hat{\xi}_{CW}(r) = \frac{D_C D_W - D_C R_W - D_W R_C + R_C R_W}{R_C R_W}$$
+
+| ペアカウント | 正規化係数 | 意味 |
+|---|---|---|
+| $D_C D_W$ | $N_C \times N_W$ | Coles–Woolworths 実ペア |
+| $D_C R_W$ | $N_C \times N_{R_W}$ | Coles–Woolworths乱択ペア |
+| $D_W R_C$ | $N_W \times N_{R_C}$ | Woolworths–Coles乱択ペア |
+| $R_C R_W$ | $N_{R_C} \times N_{R_W}$ | 乱択–乱択ペア（分母）|
+
+解釈：
+- $\xi_{CW}(r) > 0$：スケール $r$ で Coles–Woolworths が共存（同一商圏内に双方が出店）
+- $\xi_{CW}(r) < 0$：空間的排斥（競合回避・市場分割）
+- $\xi_{CC}(r) > \xi_{CW}(r)$：同種クラスタリングが異種より強い（duopoly の競合回避が定量化できる）
+
+---
+
+## 8. 未解決問題と次のステップ
+
+- [ ] `woolworths_location.ipynb` を実行して `woolworths_locations.csv` を生成する
+- [ ] `coles_correlation.ipynb` Cell 17–22 を実行して $\xi_{CW}(r)$ を計算する
+- [ ] $C_{\rm IC}$ の数値積分評価（大スケールの反相関の帰属分離）
+- [ ] $\phi(r)$ の Monte Carlo 計算（幾何補正の定量確認）
+- [ ] ABS SA2 人口密度加重ランダムカタログ（人口追随成分と出店戦略成分の分離）
+- [ ] 異方的相関関数 $\xi(r, \theta)$（Retail BAO ピークの方位角依存性）
+
+---
+
+## 9. 技術メモ
 
 - `lets-plot` の `annotateText` は未実装。代替として `geomVLine` + タイトルのサブタイトルに説明を記載。
 - `theme()` の `legendPosition` パラメータは現バージョンでは未対応。凡例はデフォルト位置（右側）。
 - ポリゴン頂点の座標順序に注意：Ray-casting は `(lat, lon)` 順、JTS/GeoTools の `Coordinate` は `(lon, lat) = (x, y)` 順。差し替え時に混同しやすい。
+- 交差相関の `crossPairCounts` は `i < j` の自己除外なし（異種ペアのため全組み合わせをカウント）。
